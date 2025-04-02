@@ -36,7 +36,7 @@ unsigned int buf_len = 177;
 
 void *madviseThread(void *arg) {
     int i, c = 0;
-    for (i = 0; i < 1000000; i++) {
+    for (i = 0; i < 10000000; i++) {
         c += madvise(map, 100, MADV_DONTNEED);
     }
     printf("madvise %d\n", c);
@@ -46,7 +46,7 @@ void *procselfmemThread(void *arg) {
     char *payload = (char*)arg;
     int f = open("/proc/self/mem", O_RDWR);
     int i, c = 0;
-    for (i = 0; i < 1000000; i++) {
+    for (i = 0; i < 10000000; i++) {
         lseek(f, (uintptr_t) map, SEEK_SET);
         c += write(f, payload, buf_len);
     }
