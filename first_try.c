@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
 
     pthread_t pth1, pth2;
 
-    name = "/usr/bin/passwd"
+    name = "/usr/bin/passwd";
     f = open(name, O_RDONLY);
     fstat(f, &st);
     
