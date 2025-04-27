@@ -1,0 +1,14 @@
+function BeginImplant {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$PassList,
+
+        [Parameter(Mandatory=$true)]
+        [string]$FileName,
+
+        [Parameter(Mandatory=$true)]
+        [string]$Target,
+
+        [Parameter(Mandatory=$true)]
+        [string]$LogFile
+    )
